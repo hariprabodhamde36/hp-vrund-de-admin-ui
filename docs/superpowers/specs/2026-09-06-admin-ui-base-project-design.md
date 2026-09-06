@@ -168,6 +168,22 @@ before the backend exists. `VITE_AUTH_MODE=api` (the default in
 `.env.example`) uses real endpoints. The stub is one clearly marked module,
 deleted once the backend is live.
 
+### Open Assumptions (auth contract unconfirmed)
+
+The backend auth contract does not exist yet. The UI is built to the
+assumptions below; every one of them is confined to `lib/api/endpoints.ts`,
+`lib/api/apiClient.ts`, and `features/auth/api/auth.api.ts`, so revising them
+later touches three files and no components.
+
+| # | Assumption | If wrong |
+|---|---|---|
+| 1 | The backend refreshes the Supabase session server-side, so a 401 means the session is genuinely over. | `apiClient` needs a queued refresh-and-retry interceptor so concurrent 401s trigger one refresh, not many. |
+| 2 | No CSRF token; the cookie is `SameSite=Lax` on a single origin. | `apiClient` must attach a CSRF header to every mutating request. |
+| 3 | The backend sets the cookie and returns no tokens in the body. | The "UI never handles tokens" premise inverts; storage and `Authorization` headers become the UI's problem. |
+| 4 | `role` is optional and unused; any authenticated user may use the panel. | `ProtectedRoute` needs role checks, `navItems` needs per-item gating, and 403 needs distinct handling from 401. |
+| 5 | `GET /api/auth/me` returns 401 when logged out. | If it returns 200 with a null user, `AuthProvider` branches differently and the global 401 handler must not fire. |
+| 6 | Errors arrive as `{ message }`. | `errors.ts` normalization changes; inline field errors may become available. |
+
 ## API Client
 
 `apiClient.ts` is a thin `fetch` wrapper providing:
