@@ -16,23 +16,24 @@ conventions that future features follow. No media feature is implemented here.
 **In scope:** Vite + React + TypeScript project, MUI theming, app shell
 (top bar, permanent side navigation, user menu), login page, protected
 routing, session handling, typed API client, TanStack Query setup, lint and
-format tooling, documented folder conventions.
+format tooling, documented folder conventions, and a placeholder Video Upload
+page at `/media/video` that establishes the media feature folder shape.
 
-**Out of scope:** every media feature, the upload implementation, the Node.js
-backend, tests.
+**Out of scope:** the upload implementation, every media feature beyond the
+placeholder Video Upload page, the Node.js backend, tests.
 
 ## Constraints and Decisions
 
-| Decision | Choice | Rationale |
-|---|---|---|
-| Repo scope | Frontend only | Node.js backend lives elsewhere. |
-| Target | Desktop web only | No mobile layouts; permanent sidebar, min width ~1280px. |
-| Supabase client | Not installed | Every request goes through the Node backend; a browser client would ship keys for no benefit. |
-| Session | httpOnly cookie, set by the backend | UI never handles tokens; immune to token theft via XSS. |
-| Uploads | Multipart POST through the backend | User decision. Backend streams to S3. (Direct-to-S3 presigned URLs were considered and rejected.) |
-| Server state | TanStack Query | Caching, retries, and request state for the data screens to come. |
-| Tests | None | Explicitly deferred by the user. No test deps, no `test` script. |
-| Package manager | pnpm | |
+| Decision        | Choice                              | Rationale                                                                                         |
+| --------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Repo scope      | Frontend only                       | Node.js backend lives elsewhere.                                                                  |
+| Target          | Desktop web only                    | No mobile layouts; permanent sidebar, min width ~1280px.                                          |
+| Supabase client | Not installed                       | Every request goes through the Node backend; a browser client would ship keys for no benefit.     |
+| Session         | httpOnly cookie, set by the backend | UI never handles tokens; immune to token theft via XSS.                                           |
+| Uploads         | Multipart POST through the backend  | User decision. Backend streams to S3. (Direct-to-S3 presigned URLs were considered and rejected.) |
+| Server state    | TanStack Query                      | Caching, retries, and request state for the data screens to come.                                 |
+| Tests           | None                                | Explicitly deferred by the user. No test deps, no `test` script.                                  |
+| Package manager | pnpm                                |                                                                                                   |
 
 ## Architecture
 
@@ -74,7 +75,8 @@ src/
     dashboard/
       pages/DashboardPage.tsx  placeholder landing page
     media/
-      README.md                documents the per-media-type convention; empty
+      README.md                documents the per-media-type convention
+      video/pages/VideoUploadPage.tsx   placeholder page at /media/video
 
   components/
     layout/
@@ -152,11 +154,11 @@ This lives in `apiClient.ts` so no caller repeats it.
 Endpoint paths are not final. All of them live in `lib/api/endpoints.ts`, so
 adapting to the real backend is a single-file change.
 
-| Method | Path | Request | Response |
-|---|---|---|---|
-| POST | `/api/auth/login` | `{ email, password }` | 200 `{ user }` + Set-Cookie; 401 `{ message }` |
-| POST | `/api/auth/logout` | — | 204 |
-| GET | `/api/auth/me` | — | 200 `{ user }`; 401 when no session |
+| Method | Path               | Request               | Response                                       |
+| ------ | ------------------ | --------------------- | ---------------------------------------------- |
+| POST   | `/api/auth/login`  | `{ email, password }` | 200 `{ user }` + Set-Cookie; 401 `{ message }` |
+| POST   | `/api/auth/logout` | —                     | 204                                            |
+| GET    | `/api/auth/me`     | —                     | 200 `{ user }`; 401 when no session            |
 
 `User` is `{ id: string; email: string; name?: string; role?: string }`.
 
@@ -175,14 +177,14 @@ assumptions below; every one of them is confined to `lib/api/endpoints.ts`,
 `lib/api/apiClient.ts`, and `features/auth/api/auth.api.ts`, so revising them
 later touches three files and no components.
 
-| # | Assumption | If wrong |
-|---|---|---|
-| 1 | The backend refreshes the Supabase session server-side, so a 401 means the session is genuinely over. | `apiClient` needs a queued refresh-and-retry interceptor so concurrent 401s trigger one refresh, not many. |
-| 2 | No CSRF token; the cookie is `SameSite=Lax` on a single origin. | `apiClient` must attach a CSRF header to every mutating request. |
-| 3 | The backend sets the cookie and returns no tokens in the body. | The "UI never handles tokens" premise inverts; storage and `Authorization` headers become the UI's problem. |
-| 4 | `role` is optional and unused; any authenticated user may use the panel. | `ProtectedRoute` needs role checks, `navItems` needs per-item gating, and 403 needs distinct handling from 401. |
-| 5 | `GET /api/auth/me` returns 401 when logged out. | If it returns 200 with a null user, `AuthProvider` branches differently and the global 401 handler must not fire. |
-| 6 | Errors arrive as `{ message }`. | `errors.ts` normalization changes; inline field errors may become available. |
+| #   | Assumption                                                                                            | If wrong                                                                                                          |
+| --- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 1   | The backend refreshes the Supabase session server-side, so a 401 means the session is genuinely over. | `apiClient` needs a queued refresh-and-retry interceptor so concurrent 401s trigger one refresh, not many.        |
+| 2   | No CSRF token; the cookie is `SameSite=Lax` on a single origin.                                       | `apiClient` must attach a CSRF header to every mutating request.                                                  |
+| 3   | The backend sets the cookie and returns no tokens in the body.                                        | The "UI never handles tokens" premise inverts; storage and `Authorization` headers become the UI's problem.       |
+| 4   | `role` is optional and unused; any authenticated user may use the panel.                              | `ProtectedRoute` needs role checks, `navItems` needs per-item gating, and 403 needs distinct handling from 401.   |
+| 5   | `GET /api/auth/me` returns 401 when logged out.                                                       | If it returns 200 with a null user, `AuthProvider` branches differently and the global 401 handler must not fire. |
+| 6   | Errors arrive as `{ message }`.                                                                       | `errors.ts` normalization changes; inline field errors may become available.                                      |
 
 ## API Client
 
@@ -248,11 +250,11 @@ multipart parsing rather than buffering whole files in memory.
 
 ## Environment Variables
 
-| Variable | Required | Default | Purpose |
-|---|---|---|---|
-| `VITE_API_BASE_URL` | no | `/api` | Backend base URL; the dev proxy makes the default work locally. |
-| `VITE_APP_NAME` | no | `Admin UI` | Shown in the top bar and document title. |
-| `VITE_AUTH_MODE` | no | `api` | `api` or `stub`. |
+| Variable            | Required | Default    | Purpose                                                         |
+| ------------------- | -------- | ---------- | --------------------------------------------------------------- |
+| `VITE_API_BASE_URL` | no       | `/api`     | Backend base URL; the dev proxy makes the default work locally. |
+| `VITE_APP_NAME`     | no       | `Admin UI` | Shown in the top bar and document title.                        |
+| `VITE_AUTH_MODE`    | no       | `api`      | `api` or `stub`.                                                |
 
 Vite dev server proxies `/api` to `http://localhost:3000`, keeping cookies
 same-origin in development and avoiding CORS and SameSite problems. Production
@@ -274,7 +276,9 @@ ESLint with typescript-eslint and the React hooks plugin, Prettier, and a husky
 4. Reloading while authenticated restores the session without a flash of the
    login page.
 5. Invalid credentials show an inline form error, not a crash.
-6. The theme toggle switches light and dark and survives reload.
-7. `pnpm build` and `pnpm lint` both pass cleanly.
-8. The README documents setup, environment variables, folder conventions, and
+6. The sidebar navigates to Video Upload, which renders "Hi from video upload
+   page" inside the shell.
+7. The theme toggle switches light and dark and survives reload.
+8. `pnpm build` and `pnpm lint` both pass cleanly.
+9. The README documents setup, environment variables, folder conventions, and
    the assumed API contract.
